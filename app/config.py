@@ -16,6 +16,10 @@ GRAPH_TENANT_ID = _env("GRAPH_TENANT_ID")
 DATABASE_URL = _env("DATABASE_URL", "postgresql://assistente:assistente@db:5432/assistente")
 
 ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY")
+# anthropic (padrão) | openai = qualquer API compatível com OpenAI (OpenAI, Gemini, Groq, OpenRouter, Ollama...)
+LLM_PROVIDER = _env("LLM_PROVIDER", "anthropic").lower()
+LLM_BASE_URL = _env("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+LLM_API_KEY = _env("LLM_API_KEY")
 LLM_MODEL = _env("LLM_MODEL", "claude-sonnet-5-5")
 LLM_FAST_MODEL = _env("LLM_FAST_MODEL", "claude-haiku-5-5")
 

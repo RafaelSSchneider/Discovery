@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+import httpx
 from anthropic import AsyncAnthropic
 
 from . import config
@@ -15,7 +16,26 @@ log = logging.getLogger(__name__)
 _client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY or None)
 
 
+_http = httpx.AsyncClient(timeout=120)
+
+
+async def _complete_openai(system: str, user: str, model: str, max_tokens: int) -> str:
+    resp = await _http.post(
+        f"{config.LLM_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {config.LLM_API_KEY}"},
+        json={
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        },
+    )
+    resp.raise_for_status()
+    return str(resp.json()["choices"][0]["message"]["content"] or "").strip()
+
+
 async def complete(system: str, user: str, model: str, max_tokens: int = 2000) -> str:
+    if config.LLM_PROVIDER == "openai":
+        return await _complete_openai(system, user, model, max_tokens)
     resp = await _client.messages.create(
         model=model,
         max_tokens=max_tokens,

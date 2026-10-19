@@ -5,7 +5,10 @@ x-app-env: &app-env
   OWNER_NAME: ${OWNER_NAME:-}
   GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID}
   GRAPH_TENANT_ID: ${GRAPH_TENANT_ID}
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   LLM_MODEL: ${LLM_MODEL:-claude-sonnet-5-5}
   LLM_FAST_MODEL: ${LLM_FAST_MODEL:-claude-haiku-5-5}
   TZ_NAME: ${TZ_NAME:-America/Sao_Paulo}
