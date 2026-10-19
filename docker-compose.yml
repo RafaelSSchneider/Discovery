@@ -39,7 +39,6 @@ services:
 
   worker:
     build: .
-    image: assistente-teams:latest
     command: ["python", "-m", "app.main"]
     environment: *app-env
     volumes:
