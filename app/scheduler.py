@@ -6,11 +6,11 @@ import asyncio
 import logging
 from datetime import datetime, time, timedelta
 
-from . import config, db, learn, people
+from . import config, db, learn, org, people
 from .commands import build_report, now_local
 from .graph import NotLoggedInError
 from .people import PRIORITY_LABEL
-from .selfchat import notify_email, send_to_owner
+from .selfchat import graph, notify_email, send_to_owner
 
 log = logging.getLogger("scheduler")
 
@@ -56,6 +56,13 @@ async def scheduler() -> None:
                     text = "🔔 **Mensagem de pessoa prioritária**\n\n" + "\n\n".join(lines)
                     await send_to_owner(text)
                     await notify_email("Mensagem de pessoa prioritária", text)
+
+            if config.ORG_CHART and (
+                await db.kv_pop("org_sync_requested") or await db.kv_get("org_sync") != now_local().date().isoformat()
+            ):
+                await db.kv_set("org_sync", now_local().date().isoformat())
+                n = await org.sync_org(graph())
+                log.info("Organograma sincronizado (%s supervisor(es))", n)
 
             status = await db.kv_get("worker_status")
             alerted = await db.kv_get("login_alert") == "1"

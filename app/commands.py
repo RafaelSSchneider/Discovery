@@ -24,7 +24,7 @@ HELP = """**Comandos**
 
 **Pessoas**
 - `/pendentes` quem está esperando resposta, por prioridade
-- `/organograma [Nome]` gestor, cadeia acima, equipe e colegas (precisa de `ORG_CHART=true`)
+- `/organograma [Nome]` gestor, cadeia acima, equipe e colegas (precisa de `ORG_CHART=true`) · `/org-sync` aprende cargos e supervisores
 - `/pessoas` · `/pessoa Nome` ficha: prioridade, apelidos, notas e onde ela anda ativa
 - `/perfil Nome[: pergunta]` quem é + o que está fazendo agora (resumo com IA)
 - `/nota Nome: texto` · `/apagar-nota ID`
@@ -260,6 +260,12 @@ async def handle(text: str) -> str:
             return "Uso: `/perfil Nome` ou `/perfil Nome: no que está trabalhando?`"
         run_in_background(lambda: build_person(name.strip(), question.strip() or PERSON_QUESTION))
         return "⏳ Montando o perfil..."
+
+    if cmd == "/org-sync":
+        if not config.ORG_CHART:
+            return org.NEEDS_SETUP
+        await db.kv_set("org_sync_requested", "1")
+        return "🏢 Atualizando cargos e supervisores a partir do diretório (até 30 s). Veja em `/pessoa Nome`."
 
     if cmd in ("/organograma", "/org"):
         return await org.build_org(selfchat.graph(), arg)

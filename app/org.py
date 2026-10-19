@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from . import config, db, people
+from . import config, db, learn, people
 from .graph import Graph
 
 log = logging.getLogger(__name__)
@@ -95,3 +95,51 @@ async def build_org(graph: Graph, query: str) -> str:
     if len(reports) > MAX_LIST or len(peers) > MAX_LIST:
         lines.append(f"_(listas limitadas a {MAX_LIST} nomes)_")
     return "\n\n".join(lines)
+
+
+# ---------- aprendizado a partir do diretório ----------
+
+def _job(u: Row) -> str | None:
+    parts = [x for x in (u.get("jobTitle"), u.get("department")) if x]
+    return f"Cargo: {parts[0]}" + (f" ({parts[1]})" if len(parts) > 1 else "") if parts else None
+
+
+async def _chain(graph: Graph, user_id: str) -> list[Row]:
+    chain: list[Row] = []
+    node_id = user_id
+    for _ in range(MAX_LEVELS):
+        boss = await _optional(graph, f"/users/{node_id}/manager", {"$select": FIELDS})
+        if not boss:
+            break
+        chain.append(boss)
+        node_id = boss["id"]
+    return chain
+
+
+async def sync_org(graph: Graph) -> int:
+    """Grava cargo e gestor na ficha das pessoas; seus supervisores (cadeia acima de você) viram prioridade alta."""
+    if not config.ORG_CHART:
+        return 0
+    me = await db.kv_get("me_id") or str((await graph.get("/me"))["id"])
+    supervisors = await _chain(graph, me)
+    done: set[str] = set()
+    for level, boss in enumerate(supervisors):
+        person = await people.get_or_create(boss["displayName"], boss["id"])
+        role = "Seu gestor direto" if level == 0 else f"Gestor acima de você (nível {level + 1})"
+        above = await _optional(graph, f"/users/{boss['id']}/manager", {"$select": FIELDS})
+        facts = [role, *filter(None, [_job(boss), f"Gestor: {above['displayName']}" if above else None])]
+        await people.set_org_facts(person["id"], facts)
+        await learn._apply_priority(person, 1, "supervisor no organograma")
+        done.add(boss["id"])
+    known = await db.q("SELECT * FROM people WHERE user_id IS NOT NULL AND user_id <> %s", (me,))
+    for person in known:
+        if person["user_id"] in done:
+            continue
+        try:
+            user = await graph.get(f"/users/{person['user_id']}", {"$select": FIELDS})
+            boss = await _optional(graph, f"/users/{person['user_id']}/manager", {"$select": FIELDS})
+        except httpx.HTTPStatusError:
+            continue  # convidado externo ou conta removida
+        facts = list(filter(None, [_job(user), f"Gestor: {boss['displayName']}" if boss else None]))
+        await people.set_org_facts(person["id"], facts)
+    return len(supervisors)

@@ -62,3 +62,35 @@ def test_org_forbidden_gives_setup_hint(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(config, "ORG_CHART", True)
     g = Graph(FakeTokens(), transport=httpx.MockTransport(lambda r: httpx.Response(403, json={})))  # type: ignore[arg-type]
     assert "User.Read.All" in asyncio.run(org.build_org(g, "ana@x.com"))
+
+
+def test_sync_org_marks_supervisors(monkeypatch: pytest.MonkeyPatch) -> None:
+    facts: dict[str, list[str]] = {}
+    prios: list[tuple[str, int]] = []
+
+    async def kv_get(key: str) -> str | None:
+        return "me"
+
+    async def q(sql: str, params: Any = None) -> list[dict[str, Any]]:
+        return []  # nenhuma outra pessoa conhecida
+
+    async def get_or_create(name: str, uid: str | None) -> dict[str, Any]:
+        return {"id": uid, "name": name}
+
+    async def set_org_facts(pid: Any, fs: list[str]) -> None:
+        facts[pid] = fs
+
+    async def apply_priority(person: Any, prio: int, why: str | None) -> bool:
+        prios.append((person["name"], prio))
+        return True
+
+    monkeypatch.setattr(config, "ORG_CHART", True)
+    monkeypatch.setattr(org.db, "kv_get", kv_get)
+    monkeypatch.setattr(org.db, "q", q)
+    monkeypatch.setattr(org.people, "get_or_create", get_or_create)
+    monkeypatch.setattr(org.people, "set_org_facts", set_org_facts)
+    monkeypatch.setattr(org.learn, "_apply_priority", apply_priority)
+    assert asyncio.run(org.sync_org(graph())) == 2
+    assert prios == [("Ana", 1), ("Bia", 1)]
+    assert facts["m1"] == ["Seu gestor direto", "Cargo: Gerente (TI)", "Gestor: Bia"]
+    assert facts["d1"][0] == "Gestor acima de você (nível 2)"

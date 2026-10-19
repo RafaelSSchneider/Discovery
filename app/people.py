@@ -95,6 +95,13 @@ async def add_fact(person_id: int, fact: str, source: str = "manual") -> int:
     return int(row["id"])
 
 
+async def set_org_facts(person_id: int, facts: list[str]) -> None:
+    """Troca as notas vindas do diretório (source 'org'); as manuais e as automáticas ficam como estão."""
+    await db.q("DELETE FROM person_facts WHERE person_id = %s AND source = 'org'", (person_id,))
+    for fact in facts:
+        await add_fact(person_id, fact, "org")
+
+
 async def delete_fact(fact_id: int) -> bool:
     return await db.q1("DELETE FROM person_facts WHERE id = %s RETURNING id", (fact_id,)) is not None
 
@@ -134,7 +141,7 @@ async def card(person: Row) -> str:
         lines.append("Apelidos: " + ", ".join(person["aliases"]))
     if not person["user_id"]:
         lines.append("_(ainda não vinculado a um usuário do Teams)_")
-    mark = {"sugerido": " _(sugerido)_", "auto": " 🤖"}
+    mark = {"sugerido": " _(sugerido)_", "auto": " 🤖", "org": " 🏢"}
     lines += [f"`{f['id']}` {f['fact']}{mark.get(f['source'], '')}" for f in facts]
     if not facts:
         lines.append("Sem notas ainda.")

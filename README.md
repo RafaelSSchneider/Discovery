@@ -73,6 +73,7 @@ O assistente só executa mensagens **suas** no chat de notas. As respostas come�
 |---|---|
 | `/pendentes` | Chats acompanhados com mensagens depois da sua última resposta, ordenados por prioridade de quem escreveu e depois pela mais antiga |
 | `/organograma [Nome]` (ou `!quem é o gestor do Nome`) | Cargo, cadeia de gestores, equipe direta e colegas, lidos do diretório do Microsoft 365. Exige `ORG_CHART=true`, a permissão delegada `User.Read.All` (pode precisar de consentimento de admin) e novo `python -m app.login` |
+| `/org-sync` | Com `ORG_CHART=true` isso roda sozinho 1x por dia: grava cargo e gestor na ficha das pessoas (notas 🏢) e marca como **prioridade alta** a sua cadeia de supervisores (respeita prioridades que você definiu à mão). Use o comando para forçar agora |
 | `/pessoas` / `/pessoa Nome` | Lista e ficha: prioridade, apelidos, notas e atividade dos últimos 14 dias (chats, nº de mensagens, última). Sem IA, resposta imediata |
 | `/perfil Nome` | Perfil com IA: **quem é**, **fazendo agora** e **como lidar**, com prioridade e apelidos no topo |
 | `/perfil Nome: pergunta` ou `!quem é o Nome` / `!no que o Nome está trabalhando` | O LLM responde usando a ficha e as mensagens dos últimos 14 dias da pessoa (só de chats acompanhados) |
