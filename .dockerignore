@@ -1,0 +1,5 @@
+.env
+manifest/
+tests/
+__pycache__/
+*.pyc

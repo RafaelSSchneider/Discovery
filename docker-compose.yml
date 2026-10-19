@@ -1,0 +1,72 @@
+name: assistente-teams
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql://assistente:${POSTGRES_PASSWORD}@db:5432/assistente
+  MICROSOFT_APP_ID: ${MICROSOFT_APP_ID}
+  MICROSOFT_APP_PASSWORD: ${MICROSOFT_APP_PASSWORD}
+  MICROSOFT_APP_TENANT_ID: ${MICROSOFT_APP_TENANT_ID}
+  OWNER_AAD_ID: ${OWNER_AAD_ID:-}
+  OWNER_NAME: ${OWNER_NAME:-}
+  GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID:-}
+  GRAPH_TENANT_ID: ${GRAPH_TENANT_ID:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  LLM_MODEL: ${LLM_MODEL:-claude-sonnet-5-5}
+  LLM_FAST_MODEL: ${LLM_FAST_MODEL:-claude-haiku-5-5}
+  TZ_NAME: ${TZ_NAME:-America/Sao_Paulo}
+  POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-300}
+  BACKFILL_DAYS: ${BACKFILL_DAYS:-7}
+  DAILY_REPORT_TIME: ${DAILY_REPORT_TIME:-18:00}
+  ALERT_PRIORITY: ${ALERT_PRIORITY:-1}
+  LEARN_MODE: ${LEARN_MODE:-auto}
+  LEARN_MIN_MESSAGES: ${LEARN_MIN_MESSAGES:-10}
+  LEARN_MAX_CALLS: ${LEARN_MAX_CALLS:-6}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: assistente
+      POSTGRES_USER: assistente
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assistente -d assistente"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  bot:
+    build: .
+    image: assistente-teams:latest
+    command: ["python", "-m", "app.bot"]
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: .
+    image: assistente-teams:latest
+    command: ["python", "-m", "app.worker"]
+    environment: *app-env
+    volumes:
+      - msal:/data          # cache do token da sua conta (login device code)
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - bot
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  msal:
