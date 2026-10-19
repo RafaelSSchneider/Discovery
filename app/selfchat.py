@@ -38,6 +38,11 @@ def bind(graph: Graph) -> None:
     _graph = graph
 
 
+def graph() -> Graph:
+    assert _graph is not None, "selfchat.bind(graph) não foi chamado"
+    return _graph
+
+
 def _inline(text: str) -> str:
     parts = _CODE.split(html.escape(text, quote=False))
     out: list[str] = []

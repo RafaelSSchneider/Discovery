@@ -34,6 +34,8 @@ TOKEN_CACHE_PATH = _env("TOKEN_CACHE_PATH", "/data/msal_cache.bin")
 NOTES_CHAT_ID = "48:notes"
 COMMAND_POLL_SECONDS = int(_env("COMMAND_POLL_SECONDS", "20"))
 # Também envia lembretes e alertas de prioridade por e-mail (pede o escopo Mail.Send)
+# Organograma (gestor, equipe) via diretório: pede o escopo User.Read.All, que costuma exigir consentimento de admin
+ORG_CHART = _env("ORG_CHART", "false").lower() in ("1", "true", "yes")
 NOTIFY_EMAIL = _env("NOTIFY_EMAIL", "false").lower() in ("1", "true", "yes")
 
 # Limite de texto enviado ao LLM por chat (mantém as mensagens mais recentes)

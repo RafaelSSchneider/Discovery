@@ -18,7 +18,7 @@ from . import config
 log = logging.getLogger(__name__)
 
 # offline_access/openid/profile são adicionados automaticamente pelo MSAL
-SCOPES = ["User.Read", "Chat.Read", "ChatMessage.Send"] + (["Mail.Send"] if config.NOTIFY_EMAIL else [])
+SCOPES = ["User.Read", "Chat.Read", "ChatMessage.Send"] + (["Mail.Send"] if config.NOTIFY_EMAIL else []) + (["User.Read.All"] if config.ORG_CHART else [])
 
 
 class NotLoggedInError(RuntimeError):
@@ -88,11 +88,13 @@ class Graph:
             await asyncio.to_thread(self.tokens.reload)  # o login pode ter sido feito depois
             return await asyncio.to_thread(self.tokens.get_token)
 
-    async def _request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+    async def _request(
+        self, method: str, url: str, extra_headers: dict[str, str] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
         resp: httpx.Response | None = None
         for attempt in range(5):
             token = await self._token()
-            resp = await self.http.request(method, url, headers={"Authorization": f"Bearer {token}"}, **kwargs)
+            resp = await self.http.request(method, url, headers={"Authorization": f"Bearer {token}", **(extra_headers or {})}, **kwargs)
             if resp.status_code in (429, 503, 504):
                 wait = int(resp.headers.get("Retry-After", 5 * 2**attempt))
                 log.warning("Graph %s em %s, aguardando %ss", resp.status_code, url, wait)
@@ -105,8 +107,10 @@ class Graph:
         resp.raise_for_status()
         return {}
 
-    async def get(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
-        return await self._request("GET", url, params=params)
+    async def get(
+        self, url: str, params: dict[str, str] | None = None, headers: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        return await self._request("GET", url, headers, params=params)
 
     async def post(self, url: str, json: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", url, json=json)

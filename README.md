@@ -25,7 +25,7 @@ Você ⇄ chat de notas (48:notes) ⇄ Graph ⇄ worker (sync + comandos + agend
 2. Anote **Application (client) ID** (`GRAPH_CLIENT_ID`) e **Directory (tenant) ID** (`GRAPH_TENANT_ID`).
 3. *Authentication* → **Allow public client flows = Yes** (login por device code).
 4. *API permissions* → **Microsoft Graph → Delegated**: `User.Read`, `Chat.Read`, `ChatMessage.Send`
-   (e `Mail.Send` só se usar `NOTIFY_EMAIL=true`). Não crie client secret.
+   (`Mail.Send` só com `NOTIFY_EMAIL=true`; `User.Read.All` só com `ORG_CHART=true`). Não crie client secret.
 
 ## 2. Stack no Portainer
 
@@ -72,6 +72,7 @@ O assistente só executa mensagens **suas** no chat de notas. As respostas come�
 | Comando | O que faz |
 |---|---|
 | `/pendentes` | Chats acompanhados com mensagens depois da sua última resposta, ordenados por prioridade de quem escreveu e depois pela mais antiga |
+| `/organograma [Nome]` (ou `!quem é o gestor do Nome`) | Cargo, cadeia de gestores, equipe direta e colegas, lidos do diretório do Microsoft 365. Exige `ORG_CHART=true`, a permissão delegada `User.Read.All` (pode precisar de consentimento de admin) e novo `python -m app.login` |
 | `/pessoas` / `/pessoa Nome` | Lista e ficha: prioridade, apelidos, notas e atividade dos últimos 14 dias (chats, nº de mensagens, última). Sem IA, resposta imediata |
 | `/perfil Nome` | Perfil com IA: **quem é**, **fazendo agora** e **como lidar**, com prioridade e apelidos no topo |
 | `/perfil Nome: pergunta` ou `!quem é o Nome` / `!no que o Nome está trabalhando` | O LLM responde usando a ficha e as mensagens dos últimos 14 dias da pessoa (só de chats acompanhados) |

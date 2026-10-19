@@ -7,7 +7,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 
-from . import config, db, learn, llm, people, selfchat
+from . import config, db, learn, llm, org, people, selfchat
 from .people import PRIORITY_LABEL
 from .textutil import parse_ids, parse_report_args, split_name_number, split_name_text
 
@@ -24,6 +24,7 @@ HELP = """**Comandos**
 
 **Pessoas**
 - `/pendentes` quem está esperando resposta, por prioridade
+- `/organograma [Nome]` gestor, cadeia acima, equipe e colegas (precisa de `ORG_CHART=true`)
 - `/pessoas` · `/pessoa Nome` ficha: prioridade, apelidos, notas e onde ela anda ativa
 - `/perfil Nome[: pergunta]` quem é + o que está fazendo agora (resumo com IA)
 - `/nota Nome: texto` · `/apagar-nota ID`
@@ -260,6 +261,9 @@ async def handle(text: str) -> str:
         run_in_background(lambda: build_person(name.strip(), question.strip() or PERSON_QUESTION))
         return "⏳ Montando o perfil..."
 
+    if cmd in ("/organograma", "/org"):
+        return await org.build_org(selfchat.graph(), arg)
+
     if cmd == "/pessoa":
         person, err = await people.resolve(arg)
         if err or person is None:
@@ -365,6 +369,9 @@ async def handle_free_text(text: str) -> str:
         who, question = str(intent["person"]), str(intent.get("question") or PERSON_QUESTION)
         run_in_background(lambda: build_person(who, question))
         return "⏳ Montando o perfil..."
+
+    if intent.get("type") == "org":
+        return await org.build_org(selfchat.graph(), str(intent.get("person") or ""))
 
     if intent.get("type") == "memory" and intent.get("person"):
         prio = intent.get("priority")

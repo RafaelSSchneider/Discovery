@@ -56,6 +56,7 @@ Responda SOMENTE com um objeto JSON, sem markdown, em um destes formatos:
 
 {"type": "reminder", "text": "<o que lembrar, curto>", "due": "<ISO 8601 com offset>"}
 {"type": "report", "chat": <número do chat ou null>, "days": <inteiro, padrão 1>}
+{"type": "org", "person": "<nome ou apelido; \"\" para o próprio usuário>"}
 {"type": "memory", "person": "<nome>", "fact": "<fato curto ou null>", "priority": <1, 2, 3 ou null>}
 {"type": "person", "person": "<nome ou apelido>", "question": "<pergunta específica, ex.: no que ele está trabalhando; use \"\" se pediu só quem é a pessoa>"}
 {"type": "unknown"}
@@ -69,6 +70,7 @@ Regras:
   Diferença para reminder: memory é um fato sobre alguém, sem data para avisar.
 - Pergunta sobre uma pessoa ("quem é o Cristian", "no que a Ana está trabalhando", "como o Bruno prefere
   receber pedidos") => person. Diferença para memory: person PERGUNTA, memory GUARDA uma informação.
+- Pergunta sobre hierarquia ("quem é o gestor do Cristian", "quem é minha equipe", "organograma da Ana") => org.
 - Qualquer outra coisa => unknown."""
 
 
