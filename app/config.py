@@ -8,15 +8,10 @@ def _env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
-APP_ID = _env("MICROSOFT_APP_ID")
-APP_PASSWORD = _env("MICROSOFT_APP_PASSWORD")
-APP_TENANT_ID = _env("MICROSOFT_APP_TENANT_ID")
-
-OWNER_AAD_ID = _env("OWNER_AAD_ID")
 OWNER_NAME = _env("OWNER_NAME")
 
-GRAPH_CLIENT_ID = _env("GRAPH_CLIENT_ID") or APP_ID
-GRAPH_TENANT_ID = _env("GRAPH_TENANT_ID") or APP_TENANT_ID
+GRAPH_CLIENT_ID = _env("GRAPH_CLIENT_ID")
+GRAPH_TENANT_ID = _env("GRAPH_TENANT_ID")
 
 DATABASE_URL = _env("DATABASE_URL", "postgresql://assistente:assistente@db:5432/assistente")
 
@@ -30,7 +25,12 @@ BACKFILL_DAYS = int(_env("BACKFILL_DAYS", "7"))
 DAILY_REPORT_TIME = _env("DAILY_REPORT_TIME", "18:00")
 
 TOKEN_CACHE_PATH = _env("TOKEN_CACHE_PATH", "/data/msal_cache.bin")
-PORT = int(_env("PORT", "3978"))
+
+# Chat de notas pessoais do Teams: é por ele que você conversa com o assistente
+NOTES_CHAT_ID = "48:notes"
+COMMAND_POLL_SECONDS = int(_env("COMMAND_POLL_SECONDS", "20"))
+# Também envia lembretes e alertas de prioridade por e-mail (pede o escopo Mail.Send)
+NOTIFY_EMAIL = _env("NOTIFY_EMAIL", "false").lower() in ("1", "true", "yes")
 
 # Limite de texto enviado ao LLM por chat (mantém as mensagens mais recentes)
 MAX_REPORT_CHARS = int(_env("MAX_REPORT_CHARS", "120000"))
