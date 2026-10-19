@@ -20,16 +20,16 @@ _http = httpx.AsyncClient(timeout=120)
 
 
 async def _complete_openai(system: str, user: str, model: str, max_tokens: int) -> str:
-    resp = await _http.post(
-        f"{config.LLM_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {config.LLM_API_KEY}"},
-        json={
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        },
-    )
-    resp.raise_for_status()
+    # modelos de raciocínio gastam parte do limite pensando: sem folga a resposta volta vazia
+    body: dict[str, Any] = {"model": model, "max_tokens": max(max_tokens, 4000)}
+    url, headers = f"{config.LLM_BASE_URL}/chat/completions", {"Authorization": f"Bearer {config.LLM_API_KEY}"}
+    body["messages"] = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    resp = await _http.post(url, headers=headers, json=body)
+    if resp.status_code == 400:  # alguns modelos (ex.: Gemma) não aceitam a mensagem de sistema
+        body["messages"] = [{"role": "user", "content": f"{system}\n\n{user}"}]
+        resp = await _http.post(url, headers=headers, json=body)
+    if resp.is_error:
+        raise RuntimeError(f"LLM {resp.status_code} ({model}): {resp.text[:300]}")
     return str(resp.json()["choices"][0]["message"]["content"] or "").strip()
 
 
