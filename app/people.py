@@ -154,6 +154,27 @@ async def recent_messages(person: Row, since: Any, limit: int = 300) -> list[Row
     return rows[::-1]
 
 
+async def activity(person: Row, since: Any) -> list[Row]:
+    """Onde a pessoa escreveu desde `since`: chat, nº de mensagens e a última, do mais recente ao mais antigo."""
+    return await db.q(
+        """SELECT c.num, c.title, count(*) AS n, max(m.created_at) AS last
+           FROM messages m JOIN chats c ON c.id = m.chat_id
+           WHERE (m.author_id = %(uid)s OR lower(m.author) = lower(%(name)s))
+             AND m.created_at > %(since)s AND NOT m.deleted
+           GROUP BY c.num, c.title ORDER BY max(m.created_at) DESC LIMIT 6""",
+        {"uid": person["user_id"], "name": person["name"], "since": since},
+    )
+
+
+def activity_lines(rows: list[Row]) -> str:
+    if not rows:
+        return "Sem mensagens recentes nos chats acompanhados."
+    return "\n\n".join(
+        f"`{r['num']}` {r['title']} · {r['n']} msg · última {r['last'].astimezone(config.TZ):%d/%m %H:%M}"
+        for r in rows
+    )
+
+
 async def context_for(author_ids: list[str], names: list[str]) -> str:
     """Texto com o que se sabe das pessoas citadas, para entrar no prompt do LLM."""
     rows = await db.q(

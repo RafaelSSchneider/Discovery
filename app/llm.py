@@ -57,7 +57,7 @@ Responda SOMENTE com um objeto JSON, sem markdown, em um destes formatos:
 {"type": "reminder", "text": "<o que lembrar, curto>", "due": "<ISO 8601 com offset>"}
 {"type": "report", "chat": <número do chat ou null>, "days": <inteiro, padrão 1>}
 {"type": "memory", "person": "<nome>", "fact": "<fato curto ou null>", "priority": <1, 2, 3 ou null>}
-{"type": "person", "person": "<nome ou apelido>", "question": "<a pergunta, ex.: no que ele está trabalhando>"}
+{"type": "person", "person": "<nome ou apelido>", "question": "<pergunta específica, ex.: no que ele está trabalhando; use \"\" se pediu só quem é a pessoa>"}
 {"type": "unknown"}
 
 Regras:
@@ -142,7 +142,15 @@ Trabalho, papel, estilo de comunicação e como lidar com a pessoa são bem-vind
 vida pessoal, saúde, família ou outros temas sensíveis, mesmo que as mensagens os mencionem."""
 
 
-async def describe_person(question: str, card: str, transcript: str) -> str:
+PROFILE_FORMAT = """Formato (markdown simples, curto):
+**Quem é:** 2-3 frases: papel, responsabilidades, jeito de trabalhar e de se comunicar.
+**Fazendo agora:** até 4 itens curtos, cada um com o chat ou a data (omita se não houver mensagens recentes).
+**Como lidar:** 1 frase prática, só se houver base (omita se não houver)."""
+
+
+async def describe_person(question: str, card: str, transcript: str, profile: bool = False) -> str:
     owner = config.OWNER_NAME or "o usuário"
+    if profile:
+        question = f"Monte o perfil da pessoa.\n{PROFILE_FORMAT}"
     user = f"Pergunta: {question}\n\nFicha:\n{card}\n\nMensagens recentes da pessoa:\n{transcript or '(nenhuma)'}"
     return await complete(PERSON_SYSTEM.format(owner=owner), user, config.LLM_MODEL, max_tokens=1200)

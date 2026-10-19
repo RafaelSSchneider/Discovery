@@ -24,8 +24,8 @@ HELP = """**Comandos**
 
 **Pessoas**
 - `/pendentes` quem está esperando resposta, por prioridade
-- `/pessoas` · `/pessoa Nome` memória de alguém
-- `/perfil Nome[: pergunta]` quem é e no que está trabalhando (usa a memória e as mensagens recentes)
+- `/pessoas` · `/pessoa Nome` ficha: prioridade, apelidos, notas e onde ela anda ativa
+- `/perfil Nome[: pergunta]` quem é + o que está fazendo agora (resumo com IA)
 - `/nota Nome: texto` · `/apagar-nota ID`
 - `/prioridade Nome 1|2|3` (1 alta, 2 normal, 3 baixa) · `/apelido Nome: apelido`
 - `/aprender [auto|revisar|off]` modo de aprendizado (hoje ele aprende sozinho enquanto lê)
@@ -148,7 +148,7 @@ async def build_pending() -> str:
 
 
 PERSON_DAYS = 14
-PERSON_QUESTION = "Quem é essa pessoa e no que está trabalhando?"
+PERSON_QUESTION = ""  # vazio = perfil completo (quem é + fazendo agora)
 
 
 async def build_person(query: str, question: str) -> str:
@@ -163,7 +163,13 @@ async def build_person(query: str, question: str) -> str:
     card = await people.card(person)
     if not msgs and "Sem notas ainda." in card:
         return f"Ainda não sei nada sobre **{person['name']}**. Acompanhe um chat com ela (`/acompanhar N`)."
-    return await llm.describe_person(question, card, transcript)
+    answer = await llm.describe_person(question, card, transcript, profile=not question)
+    if question:
+        return answer
+    rows = await people.activity(person, since)
+    last = f" · última msg {rows[0]['last'].astimezone(config.TZ):%d/%m %H:%M}" if rows else ""
+    aliases = f" · apelidos: {', '.join(person['aliases'])}" if person["aliases"] else ""
+    return f"**{person['name']}** · prioridade {PRIORITY_LABEL[person['priority']]}{aliases}{last}\n\n{answer}"
 
 
 async def remember(name: str, fact: str | None, priority: int | None) -> str:
@@ -256,7 +262,14 @@ async def handle(text: str) -> str:
 
     if cmd == "/pessoa":
         person, err = await people.resolve(arg)
-        return err if err or person is None else await people.card(person)
+        if err or person is None:
+            return err
+        rows = await people.activity(person, now_local() - timedelta(days=PERSON_DAYS))
+        return (
+            await people.card(person)
+            + f"\n\n**Atividade ({PERSON_DAYS}d)**\n\n{people.activity_lines(rows)}"
+            + f"\n\nResumo com IA: `/perfil {person['name']}`"
+        )
 
     if cmd == "/nota":
         name, fact = split_name_text(arg)
