@@ -23,3 +23,9 @@ def test_openai_compatible_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     assert seen[0].headers["Authorization"] == "Bearer k"
     body = json.loads(seen[0].content)
     assert body["model"] == "m1" and body["messages"][0] == {"role": "system", "content": "sys"}
+
+
+def test_extract_json_tolerates_noise() -> None:
+    assert llm.extract_json('Claro! ```json\n{"type": "person"}\n``` pronto') == '{"type": "person"}'
+    assert llm.extract_json('texto [{"a": 1}] fim', "[", "]") == '[{"a": 1}]'
+    assert llm.extract_json("sem json") == "sem json"

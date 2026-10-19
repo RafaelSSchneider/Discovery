@@ -45,6 +45,12 @@ async def complete(system: str, user: str, model: str, max_tokens: int = 2000) -
     return "".join(b.text for b in resp.content if b.type == "text").strip()
 
 
+def extract_json(raw: str, open_: str = "{", close: str = "}") -> str:
+    """Modelos pequenos cercam o JSON de texto ou markdown: fica só do primeiro `open_` ao último `close`."""
+    start, end = raw.find(open_), raw.rfind(close)
+    return raw[start : end + 1] if 0 <= start < end else raw
+
+
 INTENT_SYSTEM = """Você interpreta mensagens enviadas a um assistente pessoal no Teams.
 Responda SOMENTE com um objeto JSON, sem markdown, em um destes formatos:
 
@@ -70,11 +76,10 @@ async def parse_intent(text: str, now: datetime) -> dict[str, Any]:
     user = f"AGORA: {now.isoformat()} ({now:%A})\nMENSAGEM: {text}"
     try:
         raw = await complete(INTENT_SYSTEM, user, config.LLM_FAST_MODEL, max_tokens=300)
-        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        data: dict[str, Any] = json.loads(raw)
+        data: dict[str, Any] = json.loads(extract_json(raw))
         return data
     except Exception:
-        log.exception("Falha ao interpretar intenção")
+        log.exception("Falha ao interpretar intenção (resposta do modelo: %r)", locals().get("raw", "")[:300])
         return {"type": "unknown"}
 
 
@@ -122,9 +127,8 @@ async def suggest_memories(chat_title: str, transcript: str, people_ctx: str) ->
     owner = config.OWNER_NAME or "o usuário"
     user = f"Chat: {chat_title}\n\nPessoas conhecidas:\n{people_ctx or '(nenhuma)'}\n\nMensagens:\n{transcript}"
     raw = await complete(SUGGEST_SYSTEM.format(owner=owner), user, config.LLM_MODEL, max_tokens=1500)
-    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
-        data = json.loads(raw)
+        data = json.loads(extract_json(raw, "[", "]"))
     except json.JSONDecodeError:
         log.warning("Sugestões em formato inválido: %s", raw[:300])
         return []
