@@ -73,6 +73,7 @@ O assistente só executa mensagens **suas** no chat de notas. As respostas come�
 |---|---|
 | `/pendentes` | Chats acompanhados com mensagens depois da sua última resposta, ordenados por prioridade de quem escreveu e depois pela mais antiga |
 | `/pessoas` / `/pessoa Nome` | Lista e ficha (aceita parte do nome ou apelido) |
+| `/perfil Nome[: pergunta]` ou `!quem é o Nome` / `!no que o Nome está trabalhando` | O LLM responde usando a ficha e as mensagens dos últimos 14 dias da pessoa (só de chats acompanhados) |
 | `/nota Nome: texto` / `/apagar-nota ID` | Notas sobre a pessoa |
 | `/prioridade Nome 1\|2\|3` | 1 alta, 2 normal (padrão), 3 baixa |
 | `/apelido Nome: apelido` | Para achar a pessoa por outro nome |

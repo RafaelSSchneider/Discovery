@@ -51,6 +51,7 @@ Responda SOMENTE com um objeto JSON, sem markdown, em um destes formatos:
 {"type": "reminder", "text": "<o que lembrar, curto>", "due": "<ISO 8601 com offset>"}
 {"type": "report", "chat": <número do chat ou null>, "days": <inteiro, padrão 1>}
 {"type": "memory", "person": "<nome>", "fact": "<fato curto ou null>", "priority": <1, 2, 3 ou null>}
+{"type": "person", "person": "<nome ou apelido>", "question": "<a pergunta, ex.: no que ele está trabalhando>"}
 {"type": "unknown"}
 
 Regras:
@@ -60,6 +61,8 @@ Regras:
 - Informação sobre uma PESSOA para guardar ("lembre que o Rafael é meu gestor", "anota que a Ana
   aprova os deploys", "Bruno é prioridade alta") => memory. Prioridade: 1 alta, 2 normal, 3 baixa.
   Diferença para reminder: memory é um fato sobre alguém, sem data para avisar.
+- Pergunta sobre uma pessoa ("quem é o Cristian", "no que a Ana está trabalhando", "como o Bruno prefere
+  receber pedidos") => person. Diferença para memory: person PERGUNTA, memory GUARDA uma informação.
 - Qualquer outra coisa => unknown."""
 
 
@@ -98,7 +101,9 @@ async def summarize(chat_title: str, period: str, transcript: str, people_ctx: s
 
 SUGGEST_SYSTEM = """Você ajuda {owner} a manter memórias de trabalho sobre as pessoas com quem conversa no Teams.
 A partir das mensagens, sugira fatos ÚTEIS e DURÁVEIS sobre cada pessoa: papel/cargo, responsabilidades,
-projetos, quem decide ou aprova o quê, como prefere se comunicar, prazos recorrentes.
+projetos e no que está trabalhando agora, quem decide ou aprova o quê, estilo de trabalho e de comunicação
+(direto, detalhista, formal, informal...), prazos recorrentes. Se os outros ou a própria pessoa usam um
+apelido para ela, informe em "alias".
 Sugira prioridade de resposta (1 alta, 2 normal, 3 baixa) só com sinal claro
 (ex.: gestor de {owner}, cliente, quem cobra prazos, alguém que raramente precisa de resposta).
 
@@ -109,7 +114,7 @@ na dúvida, omita. Não repita o que já está nas pessoas conhecidas e não ree
 Use o nome exatamente como aparece nas mensagens.
 
 Responda SOMENTE com JSON, sem markdown:
-[{{"person": "...", "fact": "... ou null", "priority": 1|2|3|null, "why": "motivo curto"}}]
+[{{"person": "...", "fact": "... ou null", "alias": "apelido ou null", "priority": 1|2|3|null, "why": "motivo curto"}}]
 ou [] se não houver nada bom. Máximo 8 itens."""
 
 
@@ -124,3 +129,16 @@ async def suggest_memories(chat_title: str, transcript: str, people_ctx: str) ->
         log.warning("Sugestões em formato inválido: %s", raw[:300])
         return []
     return [d for d in data if isinstance(d, dict)] if isinstance(data, list) else []
+
+
+PERSON_SYSTEM = """Você responde perguntas de {owner} sobre uma pessoa com quem trabalha, em português, de forma direta.
+Use SOMENTE a ficha e as mensagens recentes dela abaixo. Cite o chat ou a data quando ajudar.
+Se não houver informação suficiente, diga o que falta em vez de inventar.
+Trabalho, papel, estilo de comunicação e como lidar com a pessoa são bem-vindos. Não especule sobre
+vida pessoal, saúde, família ou outros temas sensíveis, mesmo que as mensagens os mencionem."""
+
+
+async def describe_person(question: str, card: str, transcript: str) -> str:
+    owner = config.OWNER_NAME or "o usuário"
+    user = f"Pergunta: {question}\n\nFicha:\n{card}\n\nMensagens recentes da pessoa:\n{transcript or '(nenhuma)'}"
+    return await complete(PERSON_SYSTEM.format(owner=owner), user, config.LLM_MODEL, max_tokens=1200)

@@ -25,6 +25,7 @@ HELP = """**Comandos**
 **Pessoas**
 - `/pendentes` quem está esperando resposta, por prioridade
 - `/pessoas` · `/pessoa Nome` memória de alguém
+- `/perfil Nome[: pergunta]` quem é e no que está trabalhando (usa a memória e as mensagens recentes)
 - `/nota Nome: texto` · `/apagar-nota ID`
 - `/prioridade Nome 1|2|3` (1 alta, 2 normal, 3 baixa) · `/apelido Nome: apelido`
 - `/aprender [auto|revisar|off]` modo de aprendizado (hoje ele aprende sozinho enquanto lê)
@@ -33,7 +34,8 @@ HELP = """**Comandos**
 - `/sugestoes` · `/aprovar 12 13|todas` · `/rejeitar 12|todas`
 
 No chat de notas, comandos começam com `/`. Para texto livre, comece com `!`: *"!me lembra amanhã às 10 de revisar o PR"*, *"!report do chat 3 da semana"*,
-*"!anota que o Rafael é meu gestor, prioridade alta"*."""
+*"!anota que o Rafael é meu gestor, prioridade alta"*,
+*"!no que o Cristian está trabalhando?"*."""
 
 _background: set[asyncio.Task[None]] = set()
 
@@ -145,6 +147,25 @@ async def build_pending() -> str:
     return "\n\n".join(out)
 
 
+PERSON_DAYS = 14
+PERSON_QUESTION = "Quem é essa pessoa e no que está trabalhando?"
+
+
+async def build_person(query: str, question: str) -> str:
+    person, err = await people.resolve(query)
+    if err or person is None:
+        return err or "Pessoa não encontrada."
+    since = now_local() - timedelta(days=PERSON_DAYS)
+    msgs = await people.recent_messages(person, since)
+    transcript = "\n".join(
+        f"[{m['created_at'].astimezone(config.TZ):%d/%m %H:%M}] ({m['title']}) {m['body']}" for m in msgs
+    )[-config.MAX_REPORT_CHARS:]
+    card = await people.card(person)
+    if not msgs and "Sem notas ainda." in card:
+        return f"Ainda não sei nada sobre **{person['name']}**. Acompanhe um chat com ela (`/acompanhar N`)."
+    return await llm.describe_person(question, card, transcript)
+
+
 async def remember(name: str, fact: str | None, priority: int | None) -> str:
     person, err = await people.resolve(name, create=True)
     if err or person is None:
@@ -225,6 +246,13 @@ async def handle(text: str) -> str:
         return "\n\n".join(
             f"{PRIORITY_LABEL[r['priority']].split()[0]} **{r['name']}** · {r['facts']} nota(s)" for r in rows
         )
+
+    if cmd == "/perfil":
+        name, _, question = arg.partition(":")
+        if not name.strip():
+            return "Uso: `/perfil Nome` ou `/perfil Nome: no que está trabalhando?`"
+        run_in_background(lambda: build_person(name.strip(), question.strip() or PERSON_QUESTION))
+        return "⏳ Montando o perfil..."
 
     if cmd == "/pessoa":
         person, err = await people.resolve(arg)
@@ -319,6 +347,11 @@ async def handle_free_text(text: str) -> str:
         chat_num = int(chat) if isinstance(chat, int | str) and str(chat).isdigit() else None
         run_in_background(lambda: build_report(chat_num, days))
         return "⏳ Gerando report..."
+
+    if intent.get("type") == "person" and intent.get("person"):
+        who, question = str(intent["person"]), str(intent.get("question") or PERSON_QUESTION)
+        run_in_background(lambda: build_person(who, question))
+        return "⏳ Montando o perfil..."
 
     if intent.get("type") == "memory" and intent.get("person"):
         prio = intent.get("priority")

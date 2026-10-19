@@ -105,6 +105,9 @@ async def apply_auto(items: list[dict[str, Any]], authors: dict[str, tuple[str, 
         person = await people.get_or_create(display, uid)
         if it.get("fact"):
             learned += await _add_fact(person, str(it["fact"]))
+        alias = str(it.get("alias") or "").strip()[:40]
+        if alias and _norm(alias) not in {_norm(display), *(_norm(a) for a in person["aliases"])}:
+            await people.add_alias(person["id"], alias)
         if it.get("priority") in (1, 2, 3):
             learned += await _apply_priority(person, int(it["priority"]), it.get("why"))
     return learned

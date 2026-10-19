@@ -141,6 +141,19 @@ async def card(person: Row) -> str:
     return "\n\n".join(lines)
 
 
+async def recent_messages(person: Row, since: Any, limit: int = 300) -> list[Row]:
+    """Mensagens escritas pela pessoa nos chats acompanhados, da mais antiga para a mais nova."""
+    rows = await db.q(
+        """SELECT m.created_at, m.body, c.title
+           FROM messages m JOIN chats c ON c.id = m.chat_id
+           WHERE (m.author_id = %(uid)s OR lower(m.author) = lower(%(name)s))
+             AND m.created_at > %(since)s AND m.body <> '' AND NOT m.deleted
+           ORDER BY m.created_at DESC LIMIT %(limit)s""",
+        {"uid": person["user_id"], "name": person["name"], "since": since, "limit": limit},
+    )
+    return rows[::-1]
+
+
 async def context_for(author_ids: list[str], names: list[str]) -> str:
     """Texto com o que se sabe das pessoas citadas, para entrar no prompt do LLM."""
     rows = await db.q(
