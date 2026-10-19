@@ -1,4 +1,4 @@
-"""Worker: sincroniza lista de chats e mensagens dos chats acompanhados."""
+"""Sincronização: sincroniza lista de chats e mensagens dos chats acompanhados."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from . import config, db, learn, people
-from .graph import Graph, NotLoggedInError, TokenProvider
+from .graph import Graph, NotLoggedInError
 from .textutil import graph_iso, html_to_text, parse_dt
 
 log = logging.getLogger("worker")
@@ -72,7 +72,7 @@ async def sync_messages(graph: Graph, chat: dict[str, Any]) -> int:
 
 
 async def wait_next_cycle() -> bool:
-    """Dorme até o próximo ciclo; retorna True se o bot pediu sync imediato."""
+    """Dorme até o próximo ciclo; retorna True se um comando pediu sync imediato."""
     for _ in range(max(1, config.POLL_INTERVAL // 15)):
         if await db.kv_pop("sync_requested"):
             return True
@@ -80,17 +80,13 @@ async def wait_next_cycle() -> bool:
     return False
 
 
-async def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    await db.init()
-    graph = Graph(TokenProvider())
+async def sync_loop(graph: Graph) -> None:
     me_id: str | None = None
     last_chat_sync = 0.0
     force = True
 
     while True:
         try:
-            graph.tokens = TokenProvider()  # relê o cache (login pode ter sido feito via console)
             if me_id is None:
                 me_id = str((await graph.get("/me"))["id"])
                 await db.kv_set("me_id", me_id)
@@ -115,7 +111,3 @@ async def main() -> None:
         except Exception:
             log.exception("Erro no ciclo do worker")
         force = await wait_next_cycle()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

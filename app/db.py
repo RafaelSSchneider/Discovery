@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import Any
 
 from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
 from . import config
@@ -122,7 +121,7 @@ async def q1(sql: str, params: Any = None) -> Row | None:
 
 
 async def init() -> None:
-    """Cria o schema (com lock, porque bot e worker sobem juntos)."""
+    """Cria o schema (com lock, para o caso de mais de um processo subir junto)."""
     pool = await _get_pool()
     async with pool.connection() as conn:
         await conn.execute("SELECT pg_advisory_lock(424242)")
@@ -130,21 +129,6 @@ async def init() -> None:
             await conn.execute(SCHEMA)
         finally:
             await conn.execute("SELECT pg_advisory_unlock(424242)")
-
-
-# ---------- conversation reference ----------
-
-async def save_ref(owner_id: str, ref: dict[str, Any]) -> None:
-    await q(
-        """INSERT INTO conversation_ref (owner_id, ref) VALUES (%s, %s)
-           ON CONFLICT (owner_id) DO UPDATE SET ref = EXCLUDED.ref, updated_at = now()""",
-        (owner_id, Jsonb(ref)),
-    )
-
-
-async def load_ref(owner_id: str) -> dict[str, Any] | None:
-    row = await q1("SELECT ref FROM conversation_ref WHERE owner_id = %s", (owner_id,))
-    return row["ref"] if row else None
 
 
 # ---------- chats ----------
