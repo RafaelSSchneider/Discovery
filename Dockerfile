@@ -12,5 +12,4 @@ COPY app ./app
 RUN useradd -m -u 10001 bot && mkdir -p /data && chown bot /data
 USER bot
 
-EXPOSE 3978
-CMD ["python", "-m", "app.bot"]
+CMD ["python", "-m", "app.main"]

@@ -2,17 +2,15 @@ name: assistente-teams
 
 x-app-env: &app-env
   DATABASE_URL: postgresql://assistente:${POSTGRES_PASSWORD}@db:5432/assistente
-  MICROSOFT_APP_ID: ${MICROSOFT_APP_ID}
-  MICROSOFT_APP_PASSWORD: ${MICROSOFT_APP_PASSWORD}
-  MICROSOFT_APP_TENANT_ID: ${MICROSOFT_APP_TENANT_ID}
-  OWNER_AAD_ID: ${OWNER_AAD_ID:-}
   OWNER_NAME: ${OWNER_NAME:-}
-  GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID:-}
-  GRAPH_TENANT_ID: ${GRAPH_TENANT_ID:-}
+  GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID}
+  GRAPH_TENANT_ID: ${GRAPH_TENANT_ID}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
   LLM_MODEL: ${LLM_MODEL:-claude-sonnet-5-5}
   LLM_FAST_MODEL: ${LLM_FAST_MODEL:-claude-haiku-5-5}
   TZ_NAME: ${TZ_NAME:-America/Sao_Paulo}
+  COMMAND_POLL_SECONDS: ${COMMAND_POLL_SECONDS:-20}
+  NOTIFY_EMAIL: ${NOTIFY_EMAIL:-false}
   POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-300}
   BACKFILL_DAYS: ${BACKFILL_DAYS:-7}
   DAILY_REPORT_TIME: ${DAILY_REPORT_TIME:-18:00}
@@ -36,35 +34,16 @@ services:
       retries: 20
     restart: unless-stopped
 
-  bot:
-    build: .
-    image: assistente-teams:latest
-    command: ["python", "-m", "app.bot"]
-    environment: *app-env
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
   worker:
     build: .
     image: assistente-teams:latest
-    command: ["python", "-m", "app.worker"]
+    command: ["python", "-m", "app.main"]
     environment: *app-env
     volumes:
       - msal:/data          # cache do token da sua conta (login device code)
     depends_on:
       db:
         condition: service_healthy
-    restart: unless-stopped
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
-    depends_on:
-      - bot
     restart: unless-stopped
 
 volumes:
