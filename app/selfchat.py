@@ -145,8 +145,9 @@ async def poll_once(
         await db.kv_set("cmd_watermark", datetime.now(timezone.utc).isoformat())  # ignora notas antigas
         return 0
     me_id = await db.kv_get("me_id")
-    if not me_id:
-        return 0  # o sync ainda não descobriu quem é você
+    if not me_id:  # o sync pode demorar até um ciclo inteiro para gravar isso após o login
+        me_id = str((await graph.get("/me"))["id"])
+        await db.kv_set("me_id", me_id)
 
     since = parse_dt(watermark)
     assert since is not None
