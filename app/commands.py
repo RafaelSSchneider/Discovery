@@ -1,22 +1,17 @@
-"""Bot do Teams (chat 1:1 com você): comandos, lembretes e reports."""
+"""Lógica de comandos do assistente (sem dependência de transporte): handle, reports, memória."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 
-from aiohttp import web
-from botbuilder.core import ActivityHandler, MessageFactory, TurnContext
-from botbuilder.integration.aiohttp import CloudAdapter, ConfigurationBotFrameworkAuthentication
-from botbuilder.schema import ConversationReference
-
-from . import config, db, learn, llm, people
+from . import config, db, learn, llm, people, selfchat
 from .people import PRIORITY_LABEL
 from .textutil import parse_ids, parse_report_args, split_name_number, split_name_text
 
-log = logging.getLogger("bot")
+log = logging.getLogger("commands")
 
 HELP = """**Comandos**
 - `/chats [filtro]` lista seus chats (com número)
@@ -37,50 +32,18 @@ HELP = """**Comandos**
 - `/sugerir [N] [7d]` análise manual de chats, com revisão
 - `/sugestoes` · `/aprovar 12 13|todas` · `/rejeitar 12|todas`
 
-Ou escreva normalmente: *"me lembra amanhã às 10 de revisar o PR"*, *"report do chat 3 da semana"*,
-*"anota que o Rafael é meu gestor, prioridade alta"*."""
+No chat de notas, comandos começam com `/`. Para texto livre, comece com `!`: *"!me lembra amanhã às 10 de revisar o PR"*, *"!report do chat 3 da semana"*,
+*"!anota que o Rafael é meu gestor, prioridade alta"*."""
 
-
-class BotConfig:
-    APP_ID = config.APP_ID
-    APP_PASSWORD = config.APP_PASSWORD
-    APP_TYPE = "SingleTenant"
-    APP_TENANTID = config.APP_TENANT_ID
-
-
-ADAPTER = CloudAdapter(ConfigurationBotFrameworkAuthentication(BotConfig()))
 _background: set[asyncio.Task[None]] = set()
-
-
-async def _on_error(context: TurnContext, error: Exception) -> None:
-    log.exception("Erro no turno", exc_info=error)
-    await context.send_activity("⚠️ Erro interno, veja os logs do container.")
-
-
-ADAPTER.on_turn_error = _on_error
 
 
 def now_local() -> datetime:
     return datetime.now(config.TZ)
 
 
-# ---------- envio proativo ----------
-
-async def send_to_owner(text: str) -> None:
-    raw = await db.load_ref(config.OWNER_AAD_ID)
-    if not raw:
-        log.warning("Sem conversation reference: mande qualquer mensagem ao bot primeiro.")
-        return
-    ref = ConversationReference.deserialize(raw)
-
-    async def callback(ctx: TurnContext) -> None:
-        await ctx.send_activity(MessageFactory.text(text))
-
-    await ADAPTER.continue_conversation(ref, callback, config.APP_ID)
-
-
 def run_in_background(job: Callable[[], Awaitable[str]]) -> None:
-    """Respostas lentas (LLM) vão por mensagem proativa, evitando o timeout de ~15s do Teams."""
+    """Respostas lentas (LLM) chegam depois, como uma segunda mensagem no chat de notas."""
 
     async def runner() -> None:
         try:
@@ -88,7 +51,7 @@ def run_in_background(job: Callable[[], Awaitable[str]]) -> None:
         except Exception as exc:
             log.exception("Falha em tarefa de fundo")
             text = f"⚠️ Falhou: {exc}"
-        await send_to_owner(text)
+        await selfchat.send_to_owner(text)
 
     task = asyncio.create_task(runner())
     _background.add(task)
@@ -364,113 +327,3 @@ async def handle_free_text(text: str) -> str:
         )
 
     return "Não entendi. 🤔\n\n" + HELP
-
-
-class Assistente(ActivityHandler):
-    async def on_message_activity(self, turn_context: TurnContext) -> None:
-        sender = turn_context.activity.from_property
-        aad_id = getattr(sender, "aad_object_id", None)
-
-        if not config.OWNER_AAD_ID:
-            await turn_context.send_activity(
-                f"Configure `OWNER_AAD_ID={aad_id}` na stack e reinicie o bot."
-            )
-            return
-        if aad_id != config.OWNER_AAD_ID:
-            await turn_context.send_activity("Este é um assistente pessoal. 🙂")
-            return
-
-        ref = TurnContext.get_conversation_reference(turn_context.activity)
-        await db.save_ref(config.OWNER_AAD_ID, ref.serialize())
-
-        text = (TurnContext.remove_recipient_mention(turn_context.activity) or "").strip()
-        if not text:
-            return
-        await turn_context.send_activity(MessageFactory.text(await handle(text)))
-
-
-BOT = Assistente()
-
-
-# ---------- agendador (roda dentro do processo do bot) ----------
-
-async def _daily_report_due(now: datetime) -> bool:
-    if not config.DAILY_REPORT_TIME:
-        return False
-    hh, mm = (int(x) for x in config.DAILY_REPORT_TIME.split(":"))
-    today = now.date().isoformat()
-    if now.time() < time(hh, mm) or await db.kv_get("daily_report") == today:
-        return False
-    await db.kv_set("daily_report", today)
-    return True
-
-
-async def scheduler() -> None:
-    while True:
-        try:
-            for r in await db.due_reminders():
-                await send_to_owner(f"⏰ **Lembrete:** {r['text']}")
-                await db.mark_sent(r["id"])
-
-            if await _daily_report_due(now_local()):
-                report = await build_report(None, 1)
-                await send_to_owner("📋 **Report diário**\n\n" + report)
-                now = now_local()
-                raw = await db.kv_get("learn_digest_ts")
-                since = datetime.fromisoformat(raw) if raw else now - timedelta(days=1)
-                await db.kv_set("learn_digest_ts", now.isoformat())
-                learned = await learn.digest(since)
-                if learned:
-                    await send_to_owner(learned)
-
-            if config.ALERT_PRIORITY:
-                alerts = await people.priority_alerts()
-                if alerts:
-                    lines = [
-                        f"{PRIORITY_LABEL[a['priority']].split()[0]} **{a['name']}** em `{a['num']}` "
-                        f"{a['title']}: {a['body'][:200]}"
-                        for a in alerts
-                    ]
-                    await send_to_owner("🔔 **Mensagem de pessoa prioritária**\n\n" + "\n\n".join(lines))
-
-            status = await db.kv_get("worker_status")
-            alerted = await db.kv_get("login_alert") == "1"
-            if status == "login_required" and not alerted:
-                await send_to_owner(
-                    "🔑 Perdi o acesso aos seus chats. No Portainer, abra o console do "
-                    "container **worker** e rode `python -m app.login`."
-                )
-                await db.kv_set("login_alert", "1")
-            elif status == "ok" and alerted:
-                await db.kv_set("login_alert", "0")
-        except Exception:
-            log.exception("Erro no agendador")
-        await asyncio.sleep(30)
-
-
-# ---------- servidor ----------
-
-async def messages(request: web.Request) -> web.StreamResponse:
-    return await ADAPTER.process(request, BOT)
-
-
-async def health(_: web.Request) -> web.Response:
-    return web.Response(text="ok")
-
-
-async def on_startup(app: web.Application) -> None:
-    await db.init()
-    app["scheduler"] = asyncio.create_task(scheduler())
-
-
-def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    app = web.Application()
-    app.router.add_post("/api/messages", messages)
-    app.router.add_get("/health", health)
-    app.on_startup.append(on_startup)
-    web.run_app(app, host="0.0.0.0", port=config.PORT)
-
-
-if __name__ == "__main__":
-    main()
