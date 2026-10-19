@@ -1,41 +1,33 @@
 # Assistente pessoal no Teams
 
-Você conversa com o bot no chat 1:1 do Teams. Ele:
+Você conversa com o assistente pelo **chat de notas pessoais** do Teams (o chat com você mesmo), só com a
+Microsoft Graph e a sua conta. Sem Azure Bot, sem túnel, sem porta aberta. Ele:
 
-- **guarda lembretes** e te avisa na hora (`me lembra amanhã às 10 de revisar o PR`);
-- **lê os chats que você escolher** (via Graph, como a sua conta; ninguém vê bot entrando);
+- **guarda lembretes** e te avisa na hora (`!me lembra amanhã às 10 de revisar o PR`);
+- **lê os chats que você escolher** (via Graph, como a sua conta);
 - **gera reports** sob demanda (`/report 3 7d`) e um **report diário** automático;
 - **cria memórias sozinho enquanto lê** os chats: papel, responsabilidades e prioridade de resposta de cada pessoa;
 - ordena o que está **esperando sua resposta** e avisa na hora quando alguém prioritário escreve.
 
 ```
-Você ⇄ Teams 1:1 ⇄ Azure Bot ⇄ Cloudflare Tunnel ⇄ bot (+ agendador)
-                                                     │
-                               Postgres ← worker (Graph, polling) ← seus chats
+Você ⇄ chat de notas (48:notes) ⇄ Graph ⇄ worker (sync + comandos + agendador) ⇄ Postgres
+                                                  └→ seus chats (polling)
 ```
 
 | Serviço | Função |
 |---|---|
-| `bot` | Recebe comandos em `/api/messages`, agenda lembretes e reports, envia mensagens proativas |
-| `worker` | Sincroniza a lista de chats e as mensagens dos chats acompanhados (Graph delegado) |
+| `worker` | Processo único: sincroniza os chats (Graph delegado), lê comandos do chat de notas e roda lembretes, report diário e alertas |
 | `db` | Postgres 16 (schema criado automaticamente) |
-| `cloudflared` | Expõe o bot sem abrir porta |
 
-## 1. Azure: registro do bot
+## 1. Entra ID: registro do app
 
-1. Portal Azure → **Azure Bot** → tipo **Single Tenant**, plano **F0**.
-2. No App Registration criado: anote **Application (client) ID** e **Directory (tenant) ID**; em *Certificates & secrets*, crie um **client secret**.
-3. Ainda no App Registration, ajuste duas coisas para o worker:
-   - *API permissions* → **Microsoft Graph → Delegated**: `User.Read`, `Chat.Read`, `offline_access`.
-   - *Authentication* → **Allow public client flows = Yes** (necessário para o login por device code).
-4. No Azure Bot: *Configuration* → Messaging endpoint `https://bot.seudominio.com.br/api/messages`; *Channels* → **Microsoft Teams**.
+1. Portal Azure → **Microsoft Entra ID → App registrations → New registration**, **Single tenant**.
+2. Anote **Application (client) ID** (`GRAPH_CLIENT_ID`) e **Directory (tenant) ID** (`GRAPH_TENANT_ID`).
+3. *Authentication* → **Allow public client flows = Yes** (login por device code).
+4. *API permissions* → **Microsoft Graph → Delegated**: `User.Read`, `Chat.Read`, `ChatMessage.Send`
+   (e `Mail.Send` só se usar `NOTIFY_EMAIL=true`). Não crie client secret.
 
-## 2. Cloudflare Tunnel
-
-Zero Trust → Networks → Tunnels → crie um túnel, copie o **token**.
-Public hostname: `bot.seudominio.com.br` → `http://bot:3978`.
-
-## 3. Stack no Portainer
+## 2. Stack no Portainer
 
 **Opção A (recomendada):** suba esta pasta para um repositório Git e crie a stack em
 *Stacks → Add stack → Repository* (o Portainer faz o build).
@@ -43,25 +35,25 @@ Public hostname: `bot.seudominio.com.br` → `http://bot:3978`.
 **Opção B:** copie a pasta para o host, rode `docker build -t assistente-teams:latest .`
 e cole o `docker-compose.yml` no editor web.
 
-Preencha as variáveis de ambiente (modelo em `.env.example`). Deixe `OWNER_AAD_ID` vazio por enquanto.
+Preencha as variáveis de ambiente (modelo em `.env.example`). Nenhuma porta é exposta.
 
-## 4. Instalar no Teams
+## 3. Primeiro uso
 
-```sh
-./manifest/build.sh <MICROSOFT_APP_ID> bot.seudominio.com.br
-```
+1. Portainer → container **worker** → *Console* → `python -m app.login`, abra o link e digite o código.
+   O token fica no volume `msal`; o worker passa a usá-lo sem reiniciar. Refaça só se o token expirar
+   (o aviso aparece nos logs do worker).
+2. No Teams, abra o chat de notas (você com você mesmo) e escreva `/ajuda`.
+3. `/chats` → `/acompanhar N` → depois de alguns minutos, `/report N`.
 
-No Teams: **Apps → Gerenciar seus apps → Carregar um app** → `manifest/assistente-teams.zip`.
-(Se a opção não aparecer, o admin do Teams precisa liberar o upload de apps personalizados.)
+## Como falar com o assistente
 
-## 5. Primeiro uso
+O assistente só executa mensagens **suas** no chat de notas. As respostas começam com 🤖 e são ignoradas na leitura.
 
-1. Mande "oi" para o bot. Ele responde com o seu **OWNER_AAD_ID**.
-   Coloque o valor na stack e faça *Update the stack*.
-2. Login da sua conta para o worker: Portainer → container **worker** → *Console* →
-   `python -m app.login`, abra o link e digite o código. Só precisa refazer se o token expirar
-   (o bot te avisa no chat).
-3. No Teams: `/chats` → `/acompanhar N` → depois de alguns minutos, `/report N`.
+| Você escreve | O que acontece |
+|---|---|
+| `/comando ...` | Executa o comando (tabelas abaixo) |
+| `!texto livre` | Remove o `!` e interpreta em linguagem natural (lembrete, report, nota sobre pessoa) |
+| qualquer outra coisa | Ignorada: o chat continua servindo para suas anotações |
 
 ## Comandos
 
@@ -73,7 +65,7 @@ No Teams: **Apps → Gerenciar seus apps → Carregar um app** → `manifest/ass
 | `/report [N] [7d]` | Report de um chat ou de todos; padrão 1 dia |
 | `/lembretes` / `/cancelar ID` | Lembretes pendentes |
 | `/sync` | Força sincronização |
-| texto livre | Lembretes, reports e notas sobre pessoas em linguagem natural |
+| `!texto livre` | Lembretes, reports e notas sobre pessoas em linguagem natural (ex.: `!me lembra amanhã às 10 de revisar o PR`) |
 
 ### Memória por pessoa
 
@@ -115,8 +107,15 @@ Como a memória é usada:
 ## Notas
 
 - **Canais de times** ficaram de fora de propósito (exigem `ChannelMessage.Read.All`, com consentimento de admin).
-  Dá para adicionar no worker depois com `/teams/{id}/channels/{id}/messages/delta`.
-- Respostas que usam o LLM (reports) chegam como uma segunda mensagem, para não estourar o timeout de ~15 s do Teams.
-- Só o `OWNER_AAD_ID` é atendido; qualquer outra pessoa recebe uma recusa.
+  Dá para adicionar na sincronização depois com `/teams/{id}/channels/{id}/messages/delta`.
+- Respostas que usam o LLM (reports) chegam como uma segunda mensagem.
 - Testes: `pip install -r requirements.txt pytest && pytest -q`.
-# Discovery
+
+## Limitações
+
+- **Latência:** os comandos são lidos por polling a cada `COMMAND_POLL_SECONDS` (padrão 20 s); a resposta vem depois disso.
+- **Notificação:** mensagens postadas na sua própria conta podem não gerar notificação no celular. Para lembretes e
+  alertas de prioridade, use `NOTIFY_EMAIL=true` (também envia por e-mail a você mesmo, via `Mail.Send`).
+- **Chat de notas:** se o chat `48:notes` não existir (404), o log avisa e `selfchat_status` fica registrado; envie
+  qualquer mensagem no chat de notas do Teams para criá-lo.
+- Só chats que você acompanhar são lidos; mensagens antigas do chat de notas anteriores à primeira execução não são executadas.
